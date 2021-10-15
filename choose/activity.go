@@ -24,8 +24,10 @@ func MergeImage2() {
 
 	m := image.NewRGBA(imga.Bounds())
 	draw.Draw(m, imga.Bounds(), imga, image.Point{}, draw.Over)
-	addLabel(m, 200, 400, "20")
-	//generateImage(m, "200", 50, 200, 350)
+	//addLabel(m, 200, 400, "20")
+	for i := 0; i < 1; i++ {
+		generateImage(m, "0123456789", 50, 200+i*5, 350*1)
+	}
 	imgw, _ := os.Create("../resource/Lark2.png")
 	png.Encode(imgw, m)
 	defer imgw.Close()
