@@ -30,8 +30,8 @@ type CssType uint8
 type TextAlign string
 
 const (
-	CssTypeString CssType = 0
-	CssTypeNumber CssType = 1
+	CssTypeString CssType = 0 // 文本类型 NOTE:字符串类型超过width长度会自动切断
+	CssTypeNumber CssType = 1 // 数值类型
 
 	TextAlignCenter TextAlign = "center"
 	TextAlignLeft   TextAlign = "left"
@@ -84,35 +84,34 @@ func (p *GenerateImageParams) realText() []string {
 	}
 	return numbers
 }
-func (p *GenerateImageParams) textWidth() int {
-	width, _ := p.fontBounds()
+func (p *GenerateImageParams) lettersSpacing() int {
 	textLen := len(p.Text)
 	spaceLen := 0
 	if textLen > 0 {
 		spaceLen = textLen - 1
 	}
-	return width + spaceLen*p.LetterSpacing
-}
-func (p *GenerateImageParams) textXOffset() int {
-	offset := 0
-	switch p.Align {
-	case TextAlignLeft:
-		offset = p.Left
-		break
-	case TextAlignRight:
-		offset = p.Left + p.Width - p.textWidth()
-		break
-	default:
-		offset = p.Left + (p.Width-p.textWidth())/2
-		break
-	}
-	return offset
+	return spaceLen * p.LetterSpacing
 }
 
-func (p *GenerateImageParams) textYOffset() int {
-	_, height := p.fontBounds()
-	offset := (p.Height - height) / 2
-	return p.Top + offset + height // int(PointToFixed(p.realFontSize())>>6)
+
+
+func (p *GenerateImageParams) textXYOffset() (x, y int) {
+	width, height := p.fontBounds()
+	margin := (p.Height - height) / 2
+	y = p.Top + margin + height
+
+	switch p.Align {
+	case TextAlignLeft:
+		x = p.Left
+		break
+	case TextAlignRight:
+		x = p.Left + p.Width - width + p.lettersSpacing()
+		break
+	default:
+		x = p.Left + (p.Width-width-p.lettersSpacing())/2
+		break
+	}
+	return x, y
 }
 
 var (
@@ -125,21 +124,24 @@ func (p *GenerateImageParams) fontBounds() (width, height int) {
 		Size: size,
 		DPI:  72,
 	})
+	tmp := width
 	height = int(fontFace.Metrics().Height-fontFace.Metrics().Descent) >> 6
-	for _, v := range []rune(p.Text) {
+	for i, v := range []rune(p.Text) {
 		adv, ok := fontFace.GlyphAdvance(v)
 		if ok {
-			width += int(adv) >> 6
+			tmp += int(adv) >> 6
 		} else {
-			width += int(size)
+			tmp += int(size)
 		}
+		if p.Type == CssTypeString && p.Width < tmp+i*p.LetterSpacing {
+			p.Text = string([]rune(p.Text)[:i])
+			break
+		}
+		width = tmp
 	}
 	return width, height
 }
 
-func PointToFixed(x float64) fixed.Int26_6 {
-	return fixed.Int26_6(x * float64(dpi) * (64.0 / 72.0))
-}
 func (p *GenerateImageParams) Check() error {
 	if p == nil || p.Font == nil || p.OriginalImage == nil || len(p.Text) == 0 {
 		return ErrGenerateImageParamsIllegal
@@ -162,10 +164,7 @@ func GenerateImage(p *GenerateImageParams) error {
 	c.SetSrc(color)
 	c.SetHinting(font.HintingNone)
 
-	textXOffset := p.textXOffset()
-	// top + (height-fontSize)/2
-	// Note shift/truncate 6 bits first
-	textYOffset := p.textYOffset() //
+	textXOffset, textYOffset := p.textXYOffset()
 	pt := freetype.Pt(textXOffset, textYOffset)
 	for _, s := range p.realText() {
 		pt, err = c.DrawString(s, pt)
